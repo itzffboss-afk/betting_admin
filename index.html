@@ -66,10 +66,50 @@
                 </div>
         </div>
 
+        <!-- NEW: Deposit History Section -->
+        <div class="bg-cardBg p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4">
+            <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider"><i class="fa-solid fa-clock-rotate-left mr-2 text-emerald-400"></i> Deposit History (Approved / Rejected)</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 text-xs uppercase">
+                            <th class="py-3 px-3">User</th>
+                            <th class="py-3 px-3">Amount</th>
+                            <th class="py-3 px-3">TrxID</th>
+                            <th class="py-3 px-3">Status</th>
+                            <th class="py-3 px-3 text-right">Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="deposit-history-table-body" class="divide-y divide-slate-800/60 text-sm">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="bg-cardBg p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4">
             <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider"><i class="fa-solid fa-arrow-up-right-from-square mr-2 text-rose-400"></i> Pending Withdrawal Requests</h2>
             <div id="pending-withdrawals-container" class="space-y-2">
                 </div>
+        </div>
+
+        <!-- NEW: Withdrawal History Section -->
+        <div class="bg-cardBg p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4">
+            <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider"><i class="fa-solid fa-clock-rotate-left mr-2 text-rose-400"></i> Withdrawal History (Completed / Refunded)</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 text-xs uppercase">
+                            <th class="py-3 px-3">User</th>
+                            <th class="py-3 px-3">Amount</th>
+                            <th class="py-3 px-3">Method / Account</th>
+                            <th class="py-3 px-3">Status</th>
+                            <th class="py-3 px-3 text-right">Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="withdrawal-history-table-body" class="divide-y divide-slate-800/60 text-sm">
+                        </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -91,6 +131,8 @@
         let globalUsers = {};
         let globalDeposits = {};
         let globalWithdrawals = {};
+        let globalDepositHistory = {};
+        let globalWithdrawalHistory = {};
 
         // Real-time Listeners
         db.ref('users').on('value', (snapshot) => {
@@ -106,6 +148,17 @@
         db.ref('withdrawals').on('value', (snapshot) => {
             globalWithdrawals = snapshot.val() || {};
             renderPendingWithdrawals();
+        });
+
+        // NEW: Real-time listeners for history nodes
+        db.ref('depositHistory').on('value', (snapshot) => {
+            globalDepositHistory = snapshot.val() || {};
+            renderDepositHistory();
+        });
+
+        db.ref('withdrawalHistory').on('value', (snapshot) => {
+            globalWithdrawalHistory = snapshot.val() || {};
+            renderWithdrawalHistory();
         });
 
         function renderRegisteredUsers() {
@@ -192,7 +245,7 @@
                             <button onclick="approveDeposit('${key}')" class="flex-1 sm:flex-none bg-accentGreen hover:bg-emerald-600 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs transition">
                                 <i class="fa-solid fa-check mr-1"></i> Approve
                             </button>
-                            <button onclick="rejectDeposit('${key}', 'deposit')" class="flex-1 sm:flex-none bg-adminRed hover:bg-red-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition">
+                            <button onclick="rejectDeposit('${key}')" class="flex-1 sm:flex-none bg-adminRed hover:bg-red-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition">
                                 <i class="fa-solid fa-xmark mr-1"></i> Reject
                             </button>
                         </div>
@@ -207,8 +260,35 @@
 
             let updatedBal = (globalUsers[req.user].balance || 0) + req.amount;
             db.ref('users/' + req.user).update({ balance: updatedBal });
+
+            // Push to history
+            db.ref('depositHistory').push({
+                user: req.user,
+                amount: req.amount,
+                trxId: req.trxId,
+                status: 'Approved',
+                time: req.time
+            });
+
             db.ref('deposits/' + key).remove();
             alert(`Approved $${req.amount} deposit for ${req.user}!`);
+        }
+
+        function rejectDeposit(key) {
+            let req = globalDeposits[key];
+            if (!req) return;
+
+            // Push to history
+            db.ref('depositHistory').push({
+                user: req.user,
+                amount: req.amount,
+                trxId: req.trxId,
+                status: 'Rejected',
+                time: req.time
+            });
+
+            db.ref('deposits/' + key).remove();
+            alert("Deposit request rejected.");
         }
 
         function renderPendingWithdrawals() {
@@ -243,6 +323,19 @@
         }
 
         function approveWithdrawal(key) {
+            let req = globalWithdrawals[key];
+            if (!req) return;
+
+            // Push to history
+            db.ref('withdrawalHistory').push({
+                user: req.user,
+                amount: req.amount,
+                method: req.method,
+                account: req.account,
+                status: 'Completed',
+                time: req.time
+            });
+
             db.ref('withdrawals/' + key).remove();
             alert("Withdrawal marked as paid and completed.");
         }
@@ -250,17 +343,82 @@
         function rejectWithdrawal(key) {
             let req = globalWithdrawals[key];
             if (req && globalUsers[req.user]) {
-                // Refund balance back to user if rejected
                 let refundedBal = (globalUsers[req.user].balance || 0) + req.amount;
                 db.ref('users/' + req.user).update({ balance: refundedBal });
             }
+
+            if (req) {
+                // Push to history
+                db.ref('withdrawalHistory').push({
+                    user: req.user,
+                    amount: req.amount,
+                    method: req.method,
+                    account: req.account,
+                    status: 'Rejected & Refunded',
+                    time: req.time
+                });
+            }
+
             db.ref('withdrawals/' + key).remove();
             alert("Withdrawal rejected and funds refunded to user.");
         }
 
-        function rejectDeposit(key, type) {
-            db.ref('deposits/' + key).remove();
-            alert("Request rejected.");
+        // NEW: Render Deposit History Table
+        function renderDepositHistory() {
+            let tbody = document.getElementById('deposit-history-table-body');
+            tbody.innerHTML = '';
+            let keys = Object.keys(globalDepositHistory);
+
+            if (keys.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-500 italic text-xs">No deposit history found.</td></tr>`;
+                return;
+            }
+
+            keys.reverse().forEach(key => { // Latest first
+                let item = globalDepositHistory[key];
+                let statusBadge = item.status === 'Approved' 
+                    ? `<span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold">Approved</span>`
+                    : `<span class="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded text-[10px] font-bold">Rejected</span>`;
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-900/40 transition">
+                        <td class="py-3 px-3 font-bold text-white"><i class="fa-solid fa-user text-indigo-400 mr-1.5"></i> ${item.user}</td>
+                        <td class="py-3 px-3 font-black text-emerald-400">+$${(item.amount || 0).toFixed(2)}</td>
+                        <td class="py-3 px-3 font-mono text-xs text-amber-400 uppercase">${item.trxId}</td>
+                        <td class="py-3 px-3">${statusBadge}</td>
+                        <td class="py-3 px-3 text-right text-xs text-slate-400 font-mono">${item.time}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        // NEW: Render Withdrawal History Table
+        function renderWithdrawalHistory() {
+            let tbody = document.getElementById('withdrawal-history-table-body');
+            tbody.innerHTML = '';
+            let keys = Object.keys(globalWithdrawalHistory);
+
+            if (keys.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-500 italic text-xs">No withdrawal history found.</td></tr>`;
+                return;
+            }
+
+            keys.reverse().forEach(key => { // Latest first
+                let item = globalWithdrawalHistory[key];
+                let statusBadge = item.status === 'Completed' 
+                    ? `<span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold">Completed</span>`
+                    : `<span class="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded text-[10px] font-bold">Refunded</span>`;
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-900/40 transition">
+                        <td class="py-3 px-3 font-bold text-white"><i class="fa-solid fa-user text-rose-400 mr-1.5"></i> ${item.user}</td>
+                        <td class="py-3 px-3 font-black text-rose-400">-$${(item.amount || 0).toFixed(2)}</td>
+                        <td class="py-3 px-3 text-xs text-slate-300 font-mono"><span class="text-amber-400 font-bold">${item.method}</span> (${item.account})</td>
+                        <td class="py-3 px-3">${statusBadge}</td>
+                        <td class="py-3 px-3 text-right text-xs text-slate-400 font-mono">${item.time}</td>
+                    </tr>
+                `;
+            });
         }
     </script>
 </body>
