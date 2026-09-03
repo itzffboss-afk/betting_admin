@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ApexBet - Admin Control Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#0b0f19',
+                        cardBg: '#131b2e',
+                        accentGreen: '#10b981',
+                        adminRed: '#ef4444'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-darkBg text-slate-100 font-sans min-h-screen p-4 sm:p-6 flex flex-col items-center">
+
+    <div class="max-w-4xl w-full space-y-6">
+        <div class="bg-cardBg p-5 rounded-2xl border border-slate-800 flex justify-between items-center shadow-xl">
+            <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-shield-halved text-indigo-400 text-3xl"></i>
+                <div>
+                    <h1 class="text-lg sm:text-xl font-bold text-white">ApexBet Firebase Admin Panel</h1>
+                    <p class="text-xs text-slate-400">Live database control for users, deposits, and withdrawals</p>
+                </div>
+            </div>
+            <a href="index.html" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3.5 py-2 rounded-lg border border-slate-700 transition">
+                <i class="fa-solid fa-arrow-left mr-1"></i> Back to Game
+            </a>
+        </div>
+
+        <div class="bg-cardBg p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4">
+            <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider"><i class="fa-solid fa-user-check mr-2 text-indigo-400"></i> Registered Users Table</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 text-xs uppercase">
+                            <th class="py-3 px-3">Username</th>
+                            <th class="py-3 px-3">Registration Time</th>
+                            <th class="py-3 px-3">Balance</th>
+                            <th class="py-3 px-3">Modify Balance</th>
+                            <th class="py-3 px-3 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="registered-users-table-body" class="divide-y divide-slate-800/60 text-sm">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="bg-cardBg p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4">
+            <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider"><i class="fa-solid fa-list-check mr-2 text-amber-400"></i> Pending Deposit Requests</h2>
+            <div id="pending-deposits-container" class="space-y-2">
+                </div>
+        </div>
+
+        <div class="bg-cardBg p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4">
+            <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider"><i class="fa-solid fa-arrow-up-right-from-square mr-2 text-rose-400"></i> Pending Withdrawal Requests</h2>
+            <div id="pending-withdrawals-container" class="space-y-2">
+                </div>
+        </div>
+    </div>
+
+    <script>
+        // REPLACE WITH THE SAME FIREBASE CONFIG FROM CONSOLE
+        const firebaseConfig = {
+            apiKey: "AIzaSyC9K4XpIYg9vZAEKsTzfnUxozE9RHXy8q4",
+            authDomain: "apexbet-954e8.firebaseapp.com",
+            databaseURL: "https://apexbet-954e8-default-rtdb.firebaseio.com",
+            projectId: "apexbet-954e8",
+            storageBucket: "apexbet-954e8.firebasestorage.app",
+            messagingSenderId: "967180729015",
+            appId: "1:967180729015:web:1b19a06d767d70bcba6b32"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let globalUsers = {};
+        let globalDeposits = {};
+        let globalWithdrawals = {};
+
+        // Real-time Listeners
+        db.ref('users').on('value', (snapshot) => {
+            globalUsers = snapshot.val() || {};
+            renderRegisteredUsers();
+        });
+
+        db.ref('deposits').on('value', (snapshot) => {
+            globalDeposits = snapshot.val() || {};
+            renderPendingDeposits();
+        });
+
+        db.ref('withdrawals').on('value', (snapshot) => {
+            globalWithdrawals = snapshot.val() || {};
+            renderPendingWithdrawals();
+        });
+
+        function renderRegisteredUsers() {
+            let tbody = document.getElementById('registered-users-table-body');
+            tbody.innerHTML = '';
+            let userKeys = Object.keys(globalUsers);
+
+            if (userKeys.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-500 italic text-xs">No registered users found in Firebase.</td></tr>`;
+                return;
+            }
+
+            userKeys.forEach(username => {
+                let user = globalUsers[username];
+                let regTime = user.regDate || 'Standard User';
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-900/40 transition">
+                        <td class="py-3 px-3 font-bold text-white"><i class="fa-solid fa-user-circle text-indigo-400 mr-2"></i> ${username}</td>
+                        <td class="py-3 px-3 text-xs text-slate-400 font-mono">${regTime}</td>
+                        <td class="py-3 px-3 font-black text-emerald-400">$${(user.balance || 0).toFixed(2)}</td>
+                        <td class="py-3 px-3">
+                            <div class="flex items-center space-x-2">
+                                <input type="number" id="mod-amt-${username}" placeholder="Qty" min="1" class="w-20 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-indigo-500">
+                                <button onclick="modifyBalance('${username}', 'add')" class="bg-accentGreen hover:bg-emerald-600 text-slate-950 font-bold px-2 py-1 rounded text-xs transition" title="Add">
+                                    <i class="fa-solid fa-plus"></i>
+                                </button>
+                                <button onclick="modifyBalance('${username}', 'deduct')" class="bg-adminRed hover:bg-red-600 text-white font-bold px-2 py-1 rounded text-xs transition" title="Deduct">
+                                    <i class="fa-solid fa-minus"></i>
+                                </button>
+                            </div>
+                        </td>
+                        <td class="py-3 px-3 text-right">
+                            <button onclick="deleteUser('${username}')" class="text-slate-500 hover:text-red-400 transition p-1" title="Delete User">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        function modifyBalance(username, action) {
+            let inputField = document.getElementById(`mod-amt-${username}`);
+            let amount = parseFloat(inputField.value) || 0;
+            if (amount <= 0) { alert("Enter a valid amount."); return; }
+
+            let currentBal = globalUsers[username].balance || 0;
+            let newBal = action === 'add' ? currentBal + amount : currentBal - amount;
+
+            if (newBal < 0) { alert("Balance cannot go below zero."); return; }
+
+            db.ref('users/' + username).update({ balance: newBal }, (error) => {
+                if (!error) {
+                    alert(`Successfully updated balance for ${username}.`);
+                    inputField.value = '';
+                }
+            });
+        }
+
+        function deleteUser(username) {
+            if (!confirm(`Are you sure you want to delete user '${username}'?`)) return;
+            db.ref('users/' + username).remove();
+        }
+
+        function renderPendingDeposits() {
+            let container = document.getElementById('pending-deposits-container');
+            container.innerHTML = '';
+            let keys = Object.keys(globalDeposits);
+
+            if (keys.length === 0) {
+                container.innerHTML = `<div class="bg-slate-900 p-4 rounded-xl border border-slate-800 text-center text-slate-500 text-xs italic">No pending deposit requests.</div>`;
+                return;
+            }
+
+            keys.forEach(key => {
+                let req = globalDeposits[key];
+                container.innerHTML += `
+                    <div class="bg-slate-900 p-3.5 rounded-xl border border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div>
+                            <p class="text-xs font-bold text-white"><i class="fa-solid fa-user text-indigo-400 mr-1"></i> ${req.user} — <span class="text-emerald-400 font-black">+$${req.amount.toFixed(2)}</span></p>
+                            <p class="text-[11px] text-slate-400 font-mono mt-0.5">TrxID: <span class="text-amber-400 font-bold uppercase">${req.trxId}</span> | Time: ${req.time}</p>
+                        </div>
+                        <div class="flex space-x-2 w-full sm:w-auto">
+                            <button onclick="approveDeposit('${key}')" class="flex-1 sm:flex-none bg-accentGreen hover:bg-emerald-600 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs transition">
+                                <i class="fa-solid fa-check mr-1"></i> Approve
+                            </button>
+                            <button onclick="rejectDeposit('${key}', 'deposit')" class="flex-1 sm:flex-none bg-adminRed hover:bg-red-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition">
+                                <i class="fa-solid fa-xmark mr-1"></i> Reject
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function approveDeposit(key) {
+            let req = globalDeposits[key];
+            if (!req || !globalUsers[req.user]) return;
+
+            let updatedBal = (globalUsers[req.user].balance || 0) + req.amount;
+            db.ref('users/' + req.user).update({ balance: updatedBal });
+            db.ref('deposits/' + key).remove();
+            alert(`Approved $${req.amount} deposit for ${req.user}!`);
+        }
+
+        function renderPendingWithdrawals() {
+            let container = document.getElementById('pending-withdrawals-container');
+            container.innerHTML = '';
+            let keys = Object.keys(globalWithdrawals);
+
+            if (keys.length === 0) {
+                container.innerHTML = `<div class="bg-slate-900 p-4 rounded-xl border border-slate-800 text-center text-slate-500 text-xs italic">No pending withdrawal requests.</div>`;
+                return;
+            }
+
+            keys.forEach(key => {
+                let req = globalWithdrawals[key];
+                container.innerHTML += `
+                    <div class="bg-slate-900 p-3.5 rounded-xl border border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div>
+                            <p class="text-xs font-bold text-white"><i class="fa-solid fa-user text-rose-400 mr-1"></i> ${req.user} — <span class="text-rose-400 font-black">-$${req.amount.toFixed(2)}</span></p>
+                            <p class="text-[11px] text-slate-400 font-mono mt-0.5">Method: <span class="text-amber-400 font-bold">${req.method}</span> | Account: <span class="text-white font-bold">${req.account}</span> | Time: ${req.time}</p>
+                        </div>
+                        <div class="flex space-x-2 w-full sm:w-auto">
+                            <button onclick="approveWithdrawal('${key}')" class="flex-1 sm:flex-none bg-accentGreen hover:bg-emerald-600 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs transition">
+                                <i class="fa-solid fa-check mr-1"></i> Pay & Complete
+                            </button>
+                            <button onclick="rejectWithdrawal('${key}')" class="flex-1 sm:flex-none bg-adminRed hover:bg-red-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition">
+                                <i class="fa-solid fa-xmark mr-1"></i> Reject & Refund
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function approveWithdrawal(key) {
+            db.ref('withdrawals/' + key).remove();
+            alert("Withdrawal marked as paid and completed.");
+        }
+
+        function rejectWithdrawal(key) {
+            let req = globalWithdrawals[key];
+            if (req && globalUsers[req.user]) {
+                // Refund balance back to user if rejected
+                let refundedBal = (globalUsers[req.user].balance || 0) + req.amount;
+                db.ref('users/' + req.user).update({ balance: refundedBal });
+            }
+            db.ref('withdrawals/' + key).remove();
+            alert("Withdrawal rejected and funds refunded to user.");
+        }
+
+        function rejectDeposit(key, type) {
+            db.ref('deposits/' + key).remove();
+            alert("Request rejected.");
+        }
+    </script>
+</body>
+</html>
